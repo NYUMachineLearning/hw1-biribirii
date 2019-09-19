@@ -520,6 +520,17 @@ colnames(iris)[11] <- 'Cluster6'
 iris$Cluster6 <- as.factor(iris$Cluster6)
 autoplot(prcomp(iris_cluster), data = iris, colour = 'Cluster6')
 
+# manhattan distance average linkage with different cut
+tree_iris7 <- hclust(hierarchical_iris2, method="average")
+plot(tree_iris7)
+rect.hclust(tree_iris7, h = 1)
+# pca plot
+cluster7 <- as.data.frame(cutree(tree_iris7, k = 3))
+iris <- cbind(iris, cluster6)
+colnames(iris)[12] <- 'Cluster7'
+iris$Cluster6 <- as.factor(iris$Cluster7)
+autoplot(prcomp(iris_cluster), data = iris, colour = 'Cluster7')
+
 # alternative pca plot
 res.pca <- PCA(iris_cluster, ncp = 2, graph = FALSE)
 res.hcpc <- HCPC(res.pca, graph = FALSE)
