@@ -1,6 +1,6 @@
 ---
 title: "Unsupervised learning - clustering and dimension reduction"
-author: "Anna Yeaton"
+author: "Brian Chang"
 date: "Fall 2019"
 output:
   html_document:
@@ -22,11 +22,15 @@ library(ggplot2)
 library(tidyverse)
 library(ggfortify)
 library(fastICA)
+library(caret)
+library(factoextra)
+library(cluster)
+library(FactoMineR)
 ```
 
 ```{r}
 # read in Auto data
-Auto_data <- read_csv("/Users/ay1392/Desktop/Auto.csv")
+Auto_data <- read_csv("/Users/Brian Chang/SkyDrive/NYU/Fall 2019/Machine Learning/Homework/ML-hw1/Auto.csv")
 
 #remove cars with unknown horsepower and set horsepower to numeric
 Auto_data <- Auto_data %>% 
@@ -267,6 +271,8 @@ heatmap(a$S)
 
 ## Homework
 
+* I also did some alternative functions using different packages for my own reference and studying. Otherwise, the way covered in the lab and class is marked throughout the script.
+
 ```{r}
 data(iris)
 ```
@@ -288,7 +294,244 @@ data(iris)
   * Try two different linkage types, and two different distance metrics. 
   * For one linkage type and one distance metric, try two different cut points. 
   * Using this clustering, color the PCA plot according to the clusters. (6  plots in total)
-  
+
+____________________________________________________________________________________________________________________
+
+0. subset iris data
+
+```{r iris k-means}
+data(iris)
+as.data.frame(iris, row.names = NULL)
+
+# dataset to cluster
+iris_cluster <- iris[,1:4]
+```
+
+1. K-Means Algorithm by Hand
+
+```{r k-means first iteration}
+# pick 3 random points for centroids from data frame
+set.seed(100)
+centroid <- iris_cluster[sample(150,3),]
+# empty matrix for squared distances to each centroid from each point to fill
+dist_to_centroid <- matrix(NA,ncol=3,nrow=dim(iris_cluster)[1])
+
+# k-means algorithm first iteration
+centroid_new <- matrix(0,nrow=3,ncol=4)
+# to identify where centroid is not replaced yet
+while(all(centroid != centroid_new)){
+# for all 150 rows in iris data and 3 centroids
+  for(i in 1:150){
+    for(j in 1:3){
+      # calculating distance for each point to centroid
+      dist_to_centroid[i,j] <- (sum((iris_cluster[i,] - centroid[j,])^2))
+    }
+  }
+  # category is the clusters
+  category <- rep(NA,150)
+  for(i in 1:150){
+    category[i] <- which.min(dist_to_centroid[i,])
+  }
+  # new centroid
+  for(i in 1:3){
+    centroid[i,] <- colMeans(iris_cluster[which(category==i),])
+  }
+  # update centroid values after first iteration
+  centroid_new <- centroid
+}
+```
+
+
+```{r k-means second iteration}
+# k-means second iteration
+# for all 150 rows in iris data and 3 centroids
+  for(i in 1:150){
+    for(j in 1:3){
+      # calculating distance for each point to centroid
+      dist_to_centroid[i,j] <- (sum((iris_cluster[i,] - centroid_new[j,])^2))
+    }
+  }
+  category <- rep(NA,150)
+  for(i in 1:150){
+    category[i] <- which.min(dist_to_centroid[i,])
+  }
+  # new centroid
+  for(i in 1:3){
+    centroid_new[i,] <- colMeans(iris_cluster[which(category==i),])
+  }
+```
+
+2. PCA (this is just another package I tried on my own; the way we did it in class is in the code chunk below)
+
+```{r PCA}
+# scale iris_cluster
+iris_scale <- scale(iris_cluster)
+#pca <- preProcess(x = iris_scale, method = 'pca', pcaComp = 2)
+#iris_scale = predict(pca, iris_scale)
+
+# PCA with percent variance of components
+pca_iris <- princomp(iris_scale, cor = TRUE, scores = TRUE)
+summary(pca_iris)
+
+#plot(pca_iris, type = 'line')
+# PC1 vs. PC2 plot
+biplot(pca_iris)
+```
+
+Below is the PCA as demonstrated in class:
+
+```{r PCA2}
+iris_pca <- data.matrix(iris)
+
+Center_iris <- apply(iris_pca, 2, function(x) x - mean(x))
+
+Covariance_iris <- cov(Center_iris)
+
+Eigen_value_iris <- eigen(Covariance_iris)$value
+
+#columns are the eigen vectors
+Eigen_vector_iris <- eigen(Covariance_iris)$vector
+
+PC <- as.data.frame(data.matrix(Center_iris) %*% Eigen_vector_iris)
+
+ggplot(PC, aes(PC[,1], PC[,2])) + geom_point(aes(PC[,1], PC[,2])) + labs(x = 'PC1 (92.48%)', y = 'PC2 (3.1%)')
+
+round(cumsum(Eigen_value_iris)/sum(Eigen_value_iris) * 100, digits = 2)
+```
+
+
+3. ICA
+
+```{r ICA}
+S <- cbind(cos((1:500)/10), ((500:1)/1000))
+
+par(mfcol = c(1, 2))
+plot(S[,1], type="l")
+plot(S[,2], type="l")
+
+A <- matrix(c(0.5, 0.7, 0.423, 0.857), 2, 2)
+
+X <- S %*% A
+par(mfcol = c(1, 2))
+plot(X[,1], type="l")
+plot(X[,2], type="l")
+
+a <- fastICA(iris_cluster, 4, alg.typ = "parallel", fun = "logcosh", alpha = 1,
+             method = "R", row.norm = FALSE, maxit = 200,
+             tol = 0.0001, verbose = TRUE)
+
+heatmap(a$S)
+```
+
+
+4. K-Means on Iris Data
+
+* The data does not cluster by species. The silhouette analysis produces optimal clusters of 2; there are 3 species.
+
+```{r k-means clustering}
+# silhouette analysis with cluster package
+set.seed(20)
+dis = dist(iris_cluster)^2
+res = kmeans(iris_cluster,2)
+sil = silhouette(res$cluster, dis)
+plot(sil, col = res$cluster)
+# pca plot colored by clusters
+autoplot(prcomp(iris_cluster), data = iris_cluster, colour = res$cluster)
+
+# alternative silhouette analysis
+fviz_nbclust(iris_cluster, kmeans, method = "silhouette")
+
+set.seed(29)
+k2 <- kmeans(iris_cluster, 2, iter.max = 300)
+clusplot(iris_cluster,
+         k2$cluster,
+         shade = TRUE,
+         color = TRUE)
+```
+
+5. Hierarchical Clustering on Iris data
+
+```{r hierarchical iris}
+# euclidean distance and average linkage
+hierarchical_iris <- dist(iris_cluster, method = "euclidean")
+tree_iris <- hclust(hierarchical_iris, method="average")
+plot(tree_iris)
+# pca plot
+cluster1 <- as.data.frame(cutree(tree_iris, k = 3))
+iris <- cbind(iris, cluster1)
+colnames(iris)[6] <- 'Cluster'
+iris$Cluster <- as.factor(iris$Cluster)
+autoplot(prcomp(iris_cluster), data = iris, colour = 'Cluster')
+
+# cut tree at height 3
+tree_iris2 <- hclust(hierarchical_iris, method="average")
+plot(tree_iris2)
+rect.hclust(tree_iris2, h = 3)
+# pca plot
+cluster2 <- as.data.frame(cutree(tree_iris2, k = 3))
+iris <- cbind(iris, cluster2)
+colnames(iris)[7] <- 'Cluster2'
+iris$Cluster2 <- as.factor(iris$Cluster2)
+autoplot(prcomp(iris_cluster), data = iris, colour = 'Cluster2')
+
+# cut tree at height 1
+tree_iris3 <- hclust(hierarchical_iris, method="average")
+plot(tree_iris3)
+rect.hclust(tree_iris3, h = 1)
+# pca plot
+cluster3 <- as.data.frame(cutree(tree_iris3, k = 3))
+iris <- cbind(iris, cluster3)
+colnames(iris)[8] <- 'Cluster3'
+iris$Cluster3 <- as.factor(iris$Cluster3)
+autoplot(prcomp(iris_cluster), data = iris, colour = 'Cluster3')
+
+# manhattan distance and centroid linkage
+hierarchical_iris2 <- dist(iris_cluster, method = "manhattan")
+tree_iris4 <- hclust(hierarchical_iris2, method="centroid")
+plot(tree_iris4)
+rect.hclust(tree_iris4, k = 3)
+# pca plot
+cluster4 <- as.data.frame(cutree(tree_iris4, k = 3))
+iris <- cbind(iris, cluster4)
+colnames(iris)[9] <- 'Cluster4'
+iris$Cluster4 <- as.factor(iris$Cluster4)
+autoplot(prcomp(iris_cluster), data = iris, colour = 'Cluster4')
+
+# euclidean distance and centroid linkage
+tree_iris5 <- hclust(hierarchical_iris, method="centroid")
+#tree_iris3 <- cutree(tree_iris3, k = 3)
+plot(tree_iris5)
+rect.hclust(tree_iris5, k = 3)
+# pca plot
+cluster5 <- as.data.frame(cutree(tree_iris5, k = 3))
+iris <- cbind(iris, cluster5)
+colnames(iris)[10] <- 'Cluster5'
+iris$Cluster5 <- as.factor(iris$Cluster5)
+autoplot(prcomp(iris_cluster), data = iris, colour = 'Cluster5')
+
+# manhattan distance and average linkage
+tree_iris6 <- hclust(hierarchical_iris2, method="average")
+plot(tree_iris6)
+rect.hclust(tree_iris6, k = 3)
+# pca plot
+cluster6 <- as.data.frame(cutree(tree_iris6, k = 3))
+iris <- cbind(iris, cluster6)
+colnames(iris)[11] <- 'Cluster6'
+iris$Cluster6 <- as.factor(iris$Cluster6)
+autoplot(prcomp(iris_cluster), data = iris, colour = 'Cluster6')
+
+# alternative pca plot
+res.pca <- PCA(iris_cluster, ncp = 2, graph = FALSE)
+res.hcpc <- HCPC(res.pca, graph = FALSE)
+fviz_cluster(res.hcpc,
+             repel = TRUE,            # Avoid label overlapping
+             show.clust.cent = TRUE, # Show cluster centers
+             palette = "jco",         # Color palette see ?ggpubr::ggpar
+             ggtheme = theme_minimal(),
+             main = "Factor map"
+             )
+```
+
 
 # Optional material
 On PCA:
